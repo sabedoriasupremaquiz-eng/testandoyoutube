@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Reprodutor de Vídeo</title>
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;min-height:100vh;display:grid;place-items:center;padding:22px;background:linear-gradient(135deg,#101827,#172554);font-family:Arial,sans-serif;color:#f8fafc}
+    main{width:min(100%,760px);padding:30px;border:1px solid #334155;border-radius:20px;background:#0f172a;box-shadow:0 24px 70px #0006}
+    h1{margin:0 0 8px;font-size:27px}
+    p{color:#b8c5d8;line-height:1.5}
+    label{display:block;margin:18px 0 8px;font-weight:700;font-size:14px}
+    input{width:100%;padding:14px;border:1px solid #334155;border-radius:10px;background:#0b1220;color:white;font-size:15px}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+    button{width:100%;margin-top:20px;padding:15px;border:0;border-radius:10px;background:#e11d48;color:white;font-size:15px;font-weight:800;cursor:pointer}
+    button:disabled{opacity:.45;cursor:not-allowed}
+    #playerWrap{display:none;margin-top:22px;aspect-ratio:16/9;background:#000;border-radius:12px;overflow:hidden}
+    #player{width:100%;height:100%}
+    .status{margin-top:16px;padding:15px;border-radius:10px;background:#0b1220;border:1px solid #334155;line-height:1.7}
+    strong{color:#7dd3fc}
+    .note{font-size:12px;color:#94a3b8;margin-top:18px}
+    #error{color:#fca5a5;font-size:13px;min-height:18px;margin-top:12px}
+    @media(max-width:520px){main{padding:22px}.grid{grid-template-columns:1fr}h1{font-size:23px}}
+  </style>
+</head>
+<body>
+<main>
+  <h1>Reprodutor de Vídeo</h1>
+  <p>Adicione seu vídeo não listado, informe a duração e escolha quantas vezes deseja reproduzi-lo no evento.</p>
+
+  <label for="videoUrl">Link do vídeo do YouTube</label>
+  <input id="videoUrl" type="url" placeholder="https://www.youtube.com/watch?v=..." autocomplete="url">
+
+  <div class="grid">
+    <div>
+      <label for="quantity">Quantidade de reproduções</label>
+      <input id="quantity" type="number" min="1" max="10000" value="1">
+    </div>
+    <div>
+      <label for="duration">Duração do vídeo (MM:SS)</label>
+      <input id="duration" type="text" value="01:20" placeholder="01:20" inputmode="numeric">
+    </div>
+  </div>
+
+  <button id="start">INICIAR REPRODUÇÃO</button>
+  <div id="error" role="alert"></div>
+
+  <div id="playerWrap"><div id="player"></div></div>
+  <div class="status" aria-live="polite">
+    Reproduções concluídas: <strong id="count">0</strong> / <strong id="target">1</strong><br>
+    Status: <strong id="state">Aguardando início</strong>
+  </div>
+  <p class="note">O vídeo toca dentro desta página e recomeça quando chegar ao fim, até completar a quantidade escolhida. A duração informada serve como referência; a repetição acompanha o fim real do vídeo, não atualiza a página nem garante visualizações contabilizadas pelo YouTube. O vídeo precisa permitir incorporação. Se a reprodução automática for bloqueada, pressione play no player.</p>
+</main>
+
+<script>
+  let player = null;
+  let completed = 0;
+  let target = 1;
+  let videoId = '';
+  let apiReady = false;
+  let started = false;
+
+  function extractId(value) {
+    try {
+      const u = new URL(value.trim());
+      const host = u.hostname.replace(/^www\./, '');
+      let id = '';
+      if (host === 'youtu.be') id = u.pathname.split('/').filter(Boolean)[0] || '';
+      else if (['youtube.com','m.youtube.com','music.youtube.com'].includes(host)) {
+        if (u.pathname === '/watch') id = u.searchParams.get('v') || '';
+        else if (/^\/(shorts|embed|live)\//.test(u.pathname)) id = u.pathname.split('/')[2] || '';
+      }
+      return /^[\w-]{11}$/.test(id) ? id : null;
+    } catch { return null; }
+  }
+
+  function setState(text) { document.getElementById('state').textContent = text; }
+
+  function onYouTubeIframeAPIReady() {
+    apiReady = true;
+    if (started) createPlayer();
+  }
+
+  function createPlayer() {
+    if (!apiReady || !started) return;
+    if (player && player.destroy) player.destroy();
+
+    player = new YT.Player('player', {
+      videoId,
+      playerVars: { autoplay: 1, controls: 1, rel: 0, playsinline: 1 },
+      events: {
+        onReady: event => {
+          event.target.playVideo();
+          setState('Reproduzindo');
+        },
+        onStateChange: event => {
+          if (event.data === YT.PlayerState.PLAYING) setState('Reproduzindo');
+          if (event.data === YT.PlayerState.PAUSED) setState('Pausado');
+          if (event.data === YT.PlayerState.ENDED) {
+            completed++;
+            document.getElementById('count').textContent = completed;
+            if (completed < target) {
+              setState('Recomeçando vídeo…');
+              player.seekTo(0, true);
+              player.playVideo();
+            } else {
+              setState('Concluído');
+            }
+          }
+        },
+        onError: () => setState('Não foi possível incorporar este vídeo. Verifique as permissões do YouTube.')
+      }
+    });
+  }
+
+  document.getElementById('start').addEventListener('click', () => {
+    const error = document.getElementById('error');
+    error.textContent = '';
+    const id = extractId(document.getElementById('videoUrl').value);
+    const amount = Number.parseInt(document.getElementById('quantity').value, 10);
+    const duration = document.getElementById('duration').value.trim();
+    if (!id) { error.textContent = 'Informe um link válido de vídeo do YouTube.'; return; }
+    if (!Number.isInteger(amount) || amount < 1 || amount > 10000) {
+      error.textContent = 'Escolha uma quantidade entre 1 e 10000.'; return;
+    }
+    if (!/^\d{1,3}:[0-5]\d$/.test(duration) || duration === '0:00' || duration === '00:00') {
+      error.textContent = 'Informe a duração no formato MM:SS, por exemplo 01:20.'; return;
+    }
+
+    videoId = id;
+    target = amount;
+    completed = 0;
+    started = true;
+    document.getElementById('count').textContent = '0';
+    document.getElementById('target').textContent = String(target);
+    document.getElementById('playerWrap').style.display = 'block';
+    document.getElementById('start').disabled = true;
+    setState('Carregando vídeo…');
+    if (apiReady) createPlayer();
+  });
+
+  const tag = document.createElement('script');
+  tag.src = 'https://www.youtube.com/iframe_api';
+  document.head.appendChild(tag);
+
+  window.onYouTubeIframeAPIReady = onYouTubeIframeAPIReady;
+</script>
+</body>
+</html>
