@@ -1,0 +1,16 @@
+{
+  "name": "youtube-campaign-intake",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Interface mínima para validar e encaminhar solicitações de campanhas legítimas de promoção no YouTube.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  }
+}
