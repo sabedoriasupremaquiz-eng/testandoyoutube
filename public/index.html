@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#111827">
+  <title>Processamento de campanha</title>
+  <style>
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:20px;background:#111827;color:#f9fafb;font-family:Arial,sans-serif}
+    main{width:min(100%,480px);padding:28px;background:#1f2937;border:1px solid #374151;border-radius:16px}
+    h1{font-size:23px;margin:0 0 8px}p{color:#cbd5e1;line-height:1.5;font-size:14px}
+    label{display:block;margin:18px 0 7px;font-size:14px;font-weight:700}
+    input{width:100%;padding:13px;border-radius:9px;border:1px solid #4b5563;background:#111827;color:white;font-size:15px}
+    button{width:100%;margin-top:20px;padding:14px;border:0;border-radius:9px;background:#dc2626;color:white;font-size:14px;font-weight:800;cursor:pointer}
+    button:disabled{opacity:.55;cursor:wait}
+    #message{margin-top:16px;padding:12px;border-radius:9px;background:#111827;font-size:13px;line-height:1.5;white-space:pre-wrap}
+    .hidden{display:none}.muted{font-size:12px;color:#9ca3af}
+  </style>
+</head>
+<body>
+<main>
+  <h1>Iniciar campanha</h1>
+  <p>Informe o vídeo e a meta de visualizações da campanha.</p>
+
+  <form id="campaignForm">
+    <label for="videoUrl">Link do vídeo do YouTube</label>
+    <input id="videoUrl" name="videoUrl" type="url" placeholder="https://www.youtube.com/watch?v=..." required>
+
+    <label for="quantity">Quantidade desejada (1 a 50.000)</label>
+    <input id="quantity" name="quantity" type="number" min="1" max="50000" step="1" value="1000" required>
+
+    <button id="submitButton" type="submit">INICIAR PROCESSAMENTO</button>
+  </form>
+
+  <div id="message" class="hidden" role="status" aria-live="polite"></div>
+  <p class="muted">O aplicativo não fabrica visualizações. A execução de uma campanha depende de um provedor de promoção autorizado, de uma conta apta e das configurações e aprovações exigidas pela plataforma.</p>
+</main>
+<script>
+(() => {
+  const form = document.getElementById('campaignForm');
+  const button = document.getElementById('submitButton');
+  const message = document.getElementById('message');
+
+  function getYouTubeId(value) {
+    try {
+      const url = new URL(value.trim());
+      const host = url.hostname.toLowerCase().replace(/^www\./, '');
+      let id = '';
+      if (host === 'youtu.be') id = url.pathname.split('/').filter(Boolean)[0] || '';
+      else if (['youtube.com','m.youtube.com','music.youtube.com'].includes(host)) {
+        if (url.pathname === '/watch') id = url.searchParams.get('v') || '';
+        else if (/^\/(shorts|embed|live)\//.test(url.pathname)) id = url.pathname.split('/')[2] || '';
+      }
+      return /^[A-Za-z0-9_-]{11}$/.test(id) ? id : null;
+    } catch { return null; }
+  }
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    message.classList.remove('hidden');
+    message.textContent = '';
+
+    const videoUrl = document.getElementById('videoUrl').value.trim();
+    const quantity = Number(document.getElementById('quantity').value);
+    const videoId = getYouTubeId(videoUrl);
+
+    if (!videoId) {
+      message.textContent = 'Informe um link válido de vídeo do YouTube.';
+      return;
+    }
+    if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > 50000) {
+      message.textContent = 'A quantidade deve ser um número inteiro entre 1 e 50.000.';
+      return;
+    }
+
+    button.disabled = true;
+    button.textContent = 'ENVIANDO SOLICITAÇÃO…';
+    try {
+      const response = await fetch('/api/process', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({videoUrl, videoId, quantity})
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        message.textContent = data.message || 'Não foi possível iniciar a campanha. Nenhuma visualização foi gerada ou contabilizada.';
+        return;
+      }
+      message.textContent = data.message || 'Solicitação recebida.';
+    } catch {
+      message.textContent = 'Não foi possível acessar o servidor. Nenhuma campanha foi iniciada.';
+    } finally {
+      button.disabled = false;
+      button.textContent = 'INICIAR PROCESSAMENTO';
+    }
+  });
+})();
+</script>
+</body>
+</html>
